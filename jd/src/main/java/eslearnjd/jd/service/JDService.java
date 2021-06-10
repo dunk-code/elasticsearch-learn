@@ -20,4 +20,9 @@ public interface JDService {
     List<Map<String, Object>> search(String keyword, int pageNo, int pageSize) throws IOException;
 
     List<Content> search(String keyword) throws IOException;
+
+    Boolean analyticalBlog() throws IOException;
+
+
+    List<Map<String, Object>> searchBlog(String keyword) throws IOException;
 }

@@ -1,8 +1,11 @@
 package eslearnjd.jd.service.impl;
 
 import com.alibaba.fastjson.JSON;
+import com.sun.org.apache.regexp.internal.RE;
 import eslearnjd.jd.pojo.Content;
+import eslearnjd.jd.pojo.ParseBlog;
 import eslearnjd.jd.service.JDService;
+import eslearnjd.jd.utils.BlogParseUtil;
 import eslearnjd.jd.utils.HtmlParseUtil;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
@@ -28,6 +31,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.sql.Time;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -117,6 +121,46 @@ public class JDServiceImpl implements JDService {
     public List<Content> search(String keyword) throws IOException {
 
         return HtmlParseUtil.parseJD(keyword);
+    }
+
+    @Override
+    public Boolean analyticalBlog() throws IOException {
+        List<ParseBlog> list = BlogParseUtil.parseBlog();
+        //判断索引是否存存在
+        GetIndexRequest getIndexRequest = new GetIndexRequest("blog_index");
+        boolean exists = client.indices().exists(getIndexRequest, RequestOptions.DEFAULT);
+        if (!exists) {
+            CreateIndexRequest createIndexRequest = new CreateIndexRequest("blog_index");
+            CreateIndexResponse createIndexResponse = client.indices().create(createIndexRequest, RequestOptions.DEFAULT);
+            if (!createIndexResponse.isAcknowledged()) return false;
+        }
+        BulkRequest request = new BulkRequest();
+        for(int i = 0; i < list.size(); i++) {
+            request.add(new IndexRequest("blog_index")
+                    .source(JSON.toJSONString(list.get(i)), XContentType.JSON)
+                    .id(i + ""));
+        }
+        request.timeout(TimeValue.timeValueMillis(30000));
+        BulkResponse bulkItemResponses = client.bulk(request, RequestOptions.DEFAULT);
+        return !bulkItemResponses.hasFailures();
+    }
+
+    @Override
+    public List<Map<String, Object>> searchBlog(String keyword) throws IOException {
+        List<Map<String, Object>> list = new ArrayList<>();
+        SearchRequest searchRequest = new SearchRequest();
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+        TermQueryBuilder termQueryBuilder = new TermQueryBuilder("content", keyword);
+        searchSourceBuilder.query(termQueryBuilder);
+        searchSourceBuilder.timeout(TimeValue.timeValueMillis(30000));
+        searchRequest.source(searchSourceBuilder);
+
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        SearchHits hits = searchResponse.getHits();
+        for (SearchHit hit : hits) {
+            list.add(hit.getSourceAsMap());
+        }
+        return list;
     }
 
 
